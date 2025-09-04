@@ -3,43 +3,41 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Matspar</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <title>Matspar – Legg til vare</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <main class="container">
     <h1>Matspar</h1>
 
-    <form id="add-form">
-      <label>E-post
-        <input type="email" id="email" placeholder="deg@example.com" required />
-      </label>
+    <section class="card">
+      <label for="foodSearch">Søk etter matvare</label>
+      <input id="foodSearch" type="text" placeholder="Skriv f.eks. agurk…" autocomplete="off" />
+      <ul id="suggestions" class="suggestions"></ul>
 
-      <label>Søk etter matvare</label>
-      <div class="autocomplete">
-        <input type="text" id="food-input" placeholder="Skriv f.eks. melk..." autocomplete="off" />
-        <ul id="suggestions" class="hidden"></ul>
-      </div>
-
-      <label>Utløpsdato
-        <input type="date" id="exp" required />
-      </label>
-
-      <button type="submit">Registrer</button>
-    </form>
-
-    <section>
-      <h2>Varsler</h2>
       <div class="row">
-        <label>Dager:
-          <input type="number" id="days" value="3" min="1" />
-        </label>
-        <button id="check-alerts">Sjekk</button>
+        <label for="quantity">Antall</label>
+        <input id="quantity" type="number" min="1" value="1" />
       </div>
-      <ul id="alerts"></ul>
+
+      <div class="row">
+        <label for="exp">Utløpsdato</label>
+        <input id="exp" type="date" />
+      </div>
+
+      <p id="warning" class="warning" hidden></p>
+
+      <button id="saveBtn" disabled>Lagre</button>
+    </section>
+
+    <section class="card">
+      <h2>Lager (test)</h2>
+      <table id="itemsTable">
+        <thead><tr><th>Vare</th><th>Antall</th><th>Utløpsdato</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table>
     </section>
   </main>
-
-  <script src="./app.js" type="module"></script>
+  <script src="app.js"></script>
 </body>
 </html>
