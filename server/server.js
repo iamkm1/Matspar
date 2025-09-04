@@ -76,16 +76,42 @@ function ensureIndex() {
   }
 }
 
+// --- Normalisering for søk (fjerner diakritikk og håndterer æ/ø/å) ---
+function norm(s) {
+  return (s || "")
+    .toString()
+    .toLowerCase()
+    .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+    .replace(/æ/g, "ae").replace(/ø/g, "o").replace(/å/g, "a")
+    .replace(/œ/g, "oe").replace(/ä/g, "a").replace(/ö/g, "o").replace(/ü/g, "u");
+}
+
 // ---------- API ----------
 app.get("/api/foods", (req, res) => {
   ensureIndex();
-  const q = (req.query.q || "").toString().toLowerCase();
-  if (!q) return res.json(INDEX.slice(0, 50));
+
+  const raw = (req.query.q ?? "").toString().trim();
+  const q = norm(raw);
+
+  if (!q) {
+    return res.json(INDEX.slice(0, 50));
+  }
+
+  const withHay = INDEX.map(f => {
+    const hay = norm(`${f.name} ${f.keywords}`);
+    return { ...f, _hay: hay, _nameNorm: norm(f.name) };
+  });
+
   const terms = q.split(/\s+/).filter(Boolean);
-  const results = INDEX.filter((f) => {
-    const hay = `${f.name} ${f.keywords}`.toLowerCase();
-    return terms.every((t) => hay.includes(t));
-  }).slice(0, 50);
+
+  // 1) starter-med treff
+  const starts = withHay.filter(f => terms.every(t => f._nameNorm.startsWith(t)));
+  // 2) inneholder-treff (som ikke allerede er i starts)
+  const contains = withHay.filter(f =>
+    !starts.includes(f) && terms.every(t => f._hay.includes(t))
+  );
+
+  const results = [...starts, ...contains].slice(0, 50).map(({ _hay, _nameNorm, ...rest }) => rest);
   res.json(results);
 });
 
