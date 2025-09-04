@@ -10,26 +10,6 @@
   <main class="container">
     <h1>Matspar</h1>
 
-    <!-- Auth -->
-    <section class="card">
-      <h2>Innlogging</h2>
-      <div class="row">
-        <label for="authEmail">E-post</label>
-        <input id="authEmail" type="email" placeholder="din@epost.no" />
-      </div>
-      <div class="row">
-        <label for="authPass">Passord</label>
-        <input id="authPass" type="password" placeholder="••••••••" />
-      </div>
-      <div style="display:flex; gap:.5rem; margin:.5rem 0;">
-        <button id="registerBtn">Registrer</button>
-        <button id="loginBtn">Logg inn</button>
-        <button id="logoutBtn" style="background:#6b7280">Logg ut</button>
-      </div>
-      <p id="authStatus" style="margin:.25rem 0 0; font-weight:600;"></p>
-    </section>
-
-    <!-- Add item -->
     <section class="card">
       <label for="foodSearch">Søk etter matvare</label>
       <input id="foodSearch" type="text" placeholder="Skriv f.eks. agurk…" autocomplete="off" />
@@ -48,10 +28,8 @@
       <p id="warning" class="warning" hidden></p>
 
       <button id="saveBtn" disabled>Lagre</button>
-      <p id="needLoginHint" style="margin-top:.5rem;color:#6b7280;"></p>
     </section>
 
-    <!-- List -->
     <section class="card">
       <h2>Lager</h2>
       <table id="itemsTable">
