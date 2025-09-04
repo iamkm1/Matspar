@@ -1,12 +1,20 @@
 :root { font-family: system-ui, sans-serif; }
 body { margin: 0; background: #f6f7f9; }
 .container { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-.card { background: #fff; padding: 1rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 1rem; }
+.card { background: #fff; padding: .95rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 1rem; }
 label { display:block; font-weight:600; margin:.5rem 0; }
-input[type="text"], input[type="number"], input[type="date"] { width: 100%; padding:.6rem .7rem; border:1px solid #dcdfe4; border-radius:10px; }
-.row { display:grid; grid-template-columns: 160px 1fr; gap:.75rem; align-items:center; margin:.75rem 0; }
-button { background:#0ea5e9; color:#fff; border:0; padding:.55rem .85rem; border-radius:10px; font-weight:700; cursor:pointer; }
-button[disabled] { opacity:.5; cursor:not-allowed; }
+*,*::before,*::after { box-sizing: border-box; }
+
+input[type="text"], input[type="number"], input[type="date"] {
+  width: 100%; padding: .45rem .6rem; font-size: .95rem;
+  border:1px solid #dcdfe4; border-radius: 8px; outline: none;
+}
+input[type="text"]:focus, input[type="number"]:focus, input[type="date"]:focus {
+  border-color:#93c5fd; box-shadow:0 0 0 2px rgba(147,197,253,.35);
+}
+.row { display:grid; grid-template-columns: 160px 1fr; gap:.6rem; align-items:center; margin:.6rem 0; }
+button { background:#0ea5e9; color:#fff; border:0; padding:.45rem .75rem; border-radius:8px; font-weight:700; cursor:pointer; }
+button[disabled]{opacity:.5; cursor:not-allowed;}
 .suggestions { list-style:none; margin:.5rem 0 0; padding:0; border:1px solid #e5e7eb; border-radius:10px; max-height: 280px; overflow:auto; background:#fff; }
 .suggestions li { padding:.55rem .7rem; cursor:pointer; }
 .suggestions li:hover { background:#f0f9ff; }
@@ -16,6 +24,6 @@ button[disabled] { opacity:.5; cursor:not-allowed; }
 .status-expired { color:#b91c1c; font-weight:600; }
 #itemsTable { width:100%; border-collapse: collapse; }
 #itemsTable th, #itemsTable td { padding:.55rem; border-bottom:1px solid #eef2f7; text-align:left; }
-#itemsTable td:last-child { width: 1%; white-space: nowrap; }
+#itemsTable td:last-child { white-space: nowrap; }
 .deleteBtn { background:#ef4444; }
-.deleteBtn:hover { filter: brightness(0.95); }
+.deleteBtn:hover { filter:brightness(.95); }
