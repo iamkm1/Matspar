@@ -28,15 +28,13 @@ const dataPath = path.join(__dirname, "foods.json");
 const indexPath = path.join(__dirname, "foods.index.json");
 const publicPath = path.join(__dirname, "public");
 
-// ---------- Indeks (robust mot forskjellige JSON-varianter) ----------
+// ---------- Indeks (robust parse) ----------
 function normalizeFoods(json) {
   const arr = Array.isArray(json) ? json : (json.foods || json.data || []);
   return arr.map((f) => {
-    const foodId =
-      f.foodId ?? f.id ?? f.code ?? f.foodcode ?? f.FoodId ?? f.FOOD_ID ?? String(Math.random());
-    const name =
-      f.foodName ?? f.displayName ?? f.name ?? f.title ?? f.FoodName ?? f.matvare ?? "Ukjent";
-    const keywordsArr = f.searchKeywords ?? f.keywords ?? f.searchTerms ?? f.tags ?? [];
+    const foodId = f.foodId ?? f.id ?? f.code ?? String(Math.random());
+    const name = f.foodName ?? f.displayName ?? f.name ?? f.title ?? "Ukjent";
+    const keywordsArr = f.searchKeywords ?? f.keywords ?? [];
     const keywords = Array.isArray(keywordsArr) ? keywordsArr.join(" ") : String(keywordsArr || "");
     return { foodId: String(foodId), name: String(name), keywords: String(keywords) };
   });
@@ -47,18 +45,17 @@ function buildIndex() {
     console.error("❌ Mangler foods.json i server/-mappen!");
     return [];
   }
-  let json;
   try {
     const rawText = fs.readFileSync(dataPath, "utf8");
-    json = JSON.parse(rawText);
+    const json = JSON.parse(rawText);
+    const items = normalizeFoods(json).filter((x) => x.name && x.foodId);
+    fs.writeFileSync(indexPath, JSON.stringify(items));
+    console.log(`🔎 Indeks generert: ${items.length} varer`);
+    return items;
   } catch (e) {
-    console.error("❌ Klarte ikke parse foods.json:", e.message);
+    console.error("❌ Klarte ikke parse/generere indeks:", e.message);
     return [];
   }
-  const items = normalizeFoods(json).filter((x) => x.name && x.foodId);
-  fs.writeFileSync(indexPath, JSON.stringify(items));
-  console.log(`🔎 Indeks generert: ${items.length} varer`);
-  return items;
 }
 
 let INDEX = [];
@@ -76,7 +73,7 @@ function ensureIndex() {
   }
 }
 
-// --- Normalisering for søk (fjerner diakritikk og håndterer æ/ø/å) ---
+// --- Normalisering for søk (diakritikk + æ/ø/å) ---
 function norm(s) {
   return (s || "")
     .toString()
@@ -93,9 +90,7 @@ app.get("/api/foods", (req, res) => {
   const raw = (req.query.q ?? "").toString().trim();
   const q = norm(raw);
 
-  if (!q) {
-    return res.json(INDEX.slice(0, 50));
-  }
+  if (!q) return res.json(INDEX.slice(0, 50));
 
   const withHay = INDEX.map(f => {
     const hay = norm(`${f.name} ${f.keywords}`);
@@ -104,9 +99,7 @@ app.get("/api/foods", (req, res) => {
 
   const terms = q.split(/\s+/).filter(Boolean);
 
-  // 1) starter-med treff
   const starts = withHay.filter(f => terms.every(t => f._nameNorm.startsWith(t)));
-  // 2) inneholder-treff (som ikke allerede er i starts)
   const contains = withHay.filter(f =>
     !starts.includes(f) && terms.every(t => f._hay.includes(t))
   );
@@ -115,6 +108,7 @@ app.get("/api/foods", (req, res) => {
   res.json(results);
 });
 
+// Opprett vare
 app.post("/api/items", async (req, res) => {
   const { userId = null, foodId, name, quantity = 1, expirationDate } = req.body;
   if (!foodId || !name || !expirationDate) {
@@ -125,7 +119,6 @@ app.post("/api/items", async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    // Upsert produkt
     const [prod] = await conn.execute(
       `INSERT INTO products (food_id, name)
        VALUES (?, ?)
@@ -134,7 +127,6 @@ app.post("/api/items", async (req, res) => {
     );
     const productId = prod.insertId;
 
-    // Legg til inventory item
     const [item] = await conn.execute(
       `INSERT INTO inventory_items (user_id, product_id, quantity, expiration_date)
        VALUES (?, ?, ?, ?)`,
@@ -152,10 +144,12 @@ app.post("/api/items", async (req, res) => {
   }
 });
 
+// Hent varer
 app.get("/api/items", async (_req, res) => {
   try {
     const [rows] = await pool.execute(
-      `SELECT ii.id, p.name, ii.quantity, DATE_FORMAT(ii.expiration_date, '%Y-%m-%d') AS expiration_date
+      `SELECT ii.id, p.name, ii.quantity,
+              DATE_FORMAT(ii.expiration_date, '%Y-%m-%d') AS expiration_date
        FROM inventory_items ii
        JOIN products p ON p.id = ii.product_id
        ORDER BY ii.expiration_date ASC
@@ -168,30 +162,12 @@ app.get("/api/items", async (_req, res) => {
   }
 });
 
-// Slett vare
-app.delete("/api/items/:id", async (req, res) => {
-  const { id } = req.params;
-  const conn = await pool.getConnection();
-  try {
-    const [result] = await conn.execute(
-      `DELETE FROM inventory_items WHERE id = ?`,
-      [id]
-    );
-    res.json({ ok: true, deleted: result.affectedRows });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "DB-feil ved sletting" });
-  } finally {
-    conn.release();
-  }
-});
-
 // Oppdater vare (antall og/eller utløpsdato)
 app.put("/api/items/:id", async (req, res) => {
   const { id } = req.params;
   const { quantity, expirationDate } = req.body;
 
-  if (!quantity && !expirationDate) {
+  if (quantity === undefined && !expirationDate) {
     return res.status(400).json({ error: "Mangler felt å oppdatere" });
   }
 
@@ -201,8 +177,11 @@ app.put("/api/items/:id", async (req, res) => {
     const values = [];
 
     if (quantity !== undefined) {
+      if (Number.isNaN(Number(quantity))) {
+        return res.status(400).json({ error: "quantity må være et tall" });
+      }
       fields.push("quantity = ?");
-      values.push(quantity);
+      values.push(Number(quantity));
     }
     if (expirationDate) {
       fields.push("expiration_date = ?");
@@ -225,11 +204,22 @@ app.put("/api/items/:id", async (req, res) => {
   }
 });
 
-
-// Debug (valgfritt)
-app.get("/api/debug/foods-count", (_req, res) => {
-  ensureIndex();
-  res.json({ count: Array.isArray(INDEX) ? INDEX.length : 0 });
+// Slett vare
+app.delete("/api/items/:id", async (req, res) => {
+  const { id } = req.params;
+  const conn = await pool.getConnection();
+  try {
+    const [result] = await conn.execute(
+      `DELETE FROM inventory_items WHERE id = ?`,
+      [id]
+    );
+    res.json({ ok: true, deleted: result.affectedRows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "DB-feil ved sletting" });
+  } finally {
+    conn.release();
+  }
 });
 
 // ---------- Serve frontend ----------
@@ -241,4 +231,3 @@ app.get("/", (_req, res) => {
 // ---------- Start ----------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Matspar (MySQL) kjører på port ${PORT}`));
-
