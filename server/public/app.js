@@ -1,4 +1,4 @@
-const API = ""; // same-origin (server hoster både frontend og API)
+const API = ""; // same-origin
 const $ = (sel) => document.querySelector(sel);
 const $tbody = $("#itemsTable tbody");
 
@@ -12,14 +12,36 @@ const saveBtn = $("#saveBtn");
 let selectedFood = null;
 let debounceTimer;
 
+// --- HJELPER: lag lokal dato fra 'YYYY-MM-DD' uten tidsone-problemer ---
+function parseLocalDate(ymd) {
+  if (!ymd) return null;
+  // Forventer "YYYY-MM-DD"
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1); // Lokal tid, midnatt
+}
+
+// --- HJELPER: dagens dato (lokal) satt til 00:00 ---
+function todayLocal() {
+  const t = new Date();
+  t.setHours(0, 0, 0, 0);
+  return t;
+}
+
+function daysDiff(a, b) {
+  const ms = a.getTime() - b.getTime();
+  return Math.ceil(ms / (1000 * 60 * 60 * 24));
+}
+
 function renderWarning() {
   warning.hidden = true;
   warning.textContent = "";
   const val = dateInput.value;
   if (!val) return;
-  const today = new Date(); today.setHours(0,0,0,0);
-  const exp = new Date(val);
-  const diffDays = Math.ceil((exp - today) / (1000*60*60*24));
+
+  const exp = parseLocalDate(val);
+  const today = todayLocal();
+  const diffDays = daysDiff(exp, today);
+
   if (diffDays < 0) {
     warning.hidden = false;
     warning.textContent = `⚠️ Varen er utløpt (${Math.abs(diffDays)} dag(er) siden).`;
@@ -83,16 +105,15 @@ searchInput.addEventListener("keydown", (e) => {
   })
 );
 
-// --- Status: SNUDD logikk som du ba om ---
+// --- KORREKT statuslogikk (lokal dato): Utløpt / Snart utløpt (<=3) / OK ---
 function statusFor(expStr) {
-  const today = new Date(); today.setHours(0,0,0,0);
-  const exp = new Date(expStr);
-  const diffDays = Math.ceil((exp - today) / (1000*60*60*24));
+  const exp = parseLocalDate(expStr);
+  const today = todayLocal();
+  const diffDays = daysDiff(exp, today);
 
-  // Snu: ting som var OK før blir "Utløpt", og det som var utløpt/snart utløpt blir "OK"
-  if (diffDays < 0) return { label: "OK", cls: "status-ok" };
-  if (diffDays <= 3) return { label: "OK", cls: "status-ok" };
-  return { label: "Utløpt", cls: "status-expired" };
+  if (diffDays < 0) return { label: "Utløpt", cls: "status-expired" };
+  if (diffDays <= 3) return { label: `Snart utløpt`, cls: "status-soon" };
+  return { label: "OK", cls: "status-ok" };
 }
 
 async function refreshItems() {
