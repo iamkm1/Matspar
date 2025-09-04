@@ -186,6 +186,46 @@ app.delete("/api/items/:id", async (req, res) => {
   }
 });
 
+// Oppdater vare (antall og/eller utløpsdato)
+app.put("/api/items/:id", async (req, res) => {
+  const { id } = req.params;
+  const { quantity, expirationDate } = req.body;
+
+  if (!quantity && !expirationDate) {
+    return res.status(400).json({ error: "Mangler felt å oppdatere" });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    const fields = [];
+    const values = [];
+
+    if (quantity !== undefined) {
+      fields.push("quantity = ?");
+      values.push(quantity);
+    }
+    if (expirationDate) {
+      fields.push("expiration_date = ?");
+      values.push(expirationDate);
+    }
+
+    values.push(id);
+
+    const [result] = await conn.execute(
+      `UPDATE inventory_items SET ${fields.join(", ")} WHERE id = ?`,
+      values
+    );
+
+    res.json({ ok: true, updated: result.affectedRows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "DB-feil ved oppdatering" });
+  } finally {
+    conn.release();
+  }
+});
+
+
 // Debug (valgfritt)
 app.get("/api/debug/foods-count", (_req, res) => {
   ensureIndex();
@@ -201,3 +241,4 @@ app.get("/", (_req, res) => {
 // ---------- Start ----------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Matspar (MySQL) kjører på port ${PORT}`));
+
