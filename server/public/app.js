@@ -132,21 +132,33 @@ async function refreshItems() {
     });
   });
 
-  // Endre (antall/utløpsdato via enkle prompts)
+  // Endre
   document.querySelectorAll(".editBtn").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       const id = e.target.getAttribute("data-id");
 
       const newQuantityRaw = prompt("Nytt antall (tom = uendret):");
-      const newDateRaw = prompt("Ny utløpsdato (YYYY-MM-DD) (tom = uendret):");
+      const newDateRaw = prompt("Ny utløpsdato (år-måned-dag, f.eks. 2025-09-15) (tom = uendret):");
+
+      // Normaliser dato: alltid YYYY-MM-DD
+      function normalizeDateInput(s) {
+        if (!s) return undefined;
+        const t = s.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t; // allerede korrekt
+        return undefined; // ugyldig
+      }
 
       const payload = {};
       if (newQuantityRaw && !Number.isNaN(Number(newQuantityRaw))) {
         payload.quantity = Number(newQuantityRaw);
       }
-      if (newDateRaw && /^\d{4}-\d{2}-\d{2}$/.test(newDateRaw)) {
-        payload.expirationDate = newDateRaw;
+
+      const isoDate = normalizeDateInput(newDateRaw || "");
+      if (newDateRaw && !isoDate) {
+        alert("Ugyldig dato. Bruk formatet ÅÅÅÅ-MM-DD, f.eks. 2025-09-15");
+        return;
       }
+      if (isoDate) payload.expirationDate = isoDate;
 
       if (Object.keys(payload).length === 0) return;
 
@@ -168,7 +180,7 @@ saveBtn.addEventListener("click", async () => {
     foodId: selectedFood.foodId,
     name: selectedFood.name,
     quantity: Number(quantityInput.value) || 1,
-    expirationDate: dateInput.value
+    expirationDate: dateInput.value // HTML date input gir allerede YYYY-MM-DD
   };
   const res = await fetch(`${API}/api/items`, {
     method: "POST",
