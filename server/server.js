@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ------------------ DB ------------------
+// ---------- DB (Railway MySQL env vars) ----------
 const pool = mysql.createPool({
   host: process.env.MYSQLHOST,
   port: process.env.MYSQLPORT,
@@ -18,40 +18,65 @@ const pool = mysql.createPool({
   database: process.env.MYSQLDATABASE,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0,
+  queueLimit: 0
 });
 
-// ------------------ Paths ------------------
+// ---------- Paths ----------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dataPath = path.join(__dirname, "foods.json");
 const indexPath = path.join(__dirname, "foods.index.json");
+const publicPath = path.join(__dirname, "public");
 
-// ------------------ Indeks ------------------
+// ---------- Indeks (robust mot forskjellige JSON-varianter) ----------
+function normalizeFoods(json) {
+  const arr = Array.isArray(json) ? json : (json.foods || json.data || []);
+  return arr.map((f) => {
+    const foodId =
+      f.foodId ?? f.id ?? f.code ?? f.foodcode ?? f.FoodId ?? f.FOOD_ID ?? String(Math.random());
+    const name =
+      f.foodName ?? f.displayName ?? f.name ?? f.title ?? f.FoodName ?? f.matvare ?? "Ukjent";
+    const keywordsArr = f.searchKeywords ?? f.keywords ?? f.searchTerms ?? f.tags ?? [];
+    const keywords = Array.isArray(keywordsArr) ? keywordsArr.join(" ") : String(keywordsArr || "");
+    return { foodId: String(foodId), name: String(name), keywords: String(keywords) };
+  });
+}
+
 function buildIndex() {
   if (!fs.existsSync(dataPath)) {
     console.error("❌ Mangler foods.json i server/-mappen!");
-    return;
+    return [];
   }
-  const raw = JSON.parse(fs.readFileSync(dataPath, "utf8"));
-  const items = (raw.foods || []).map((f) => ({
-    foodId: f.foodId,
-    name: f.foodName,
-    keywords: (f.searchKeywords || []).join(" "),
-  }));
+  let json;
+  try {
+    const rawText = fs.readFileSync(dataPath, "utf8");
+    json = JSON.parse(rawText);
+  } catch (e) {
+    console.error("❌ Klarte ikke parse foods.json:", e.message);
+    return [];
+  }
+  const items = normalizeFoods(json).filter((x) => x.name && x.foodId);
   fs.writeFileSync(indexPath, JSON.stringify(items));
   console.log(`🔎 Indeks generert: ${items.length} varer`);
+  return items;
 }
 
 let INDEX = [];
 function ensureIndex() {
-  if (INDEX.length === 0) {
-    if (!fs.existsSync(indexPath)) buildIndex();
-    INDEX = JSON.parse(fs.readFileSync(indexPath, "utf8"));
+  try {
+    if (fs.existsSync(indexPath)) {
+      const txt = fs.readFileSync(indexPath, "utf8");
+      INDEX = JSON.parse(txt);
+      if (!Array.isArray(INDEX) || INDEX.length === 0) INDEX = buildIndex();
+    } else {
+      INDEX = buildIndex();
+    }
+  } catch {
+    INDEX = buildIndex();
   }
 }
 
-// ------------------ API ------------------
+// ---------- API ----------
 app.get("/api/foods", (req, res) => {
   ensureIndex();
   const q = (req.query.q || "").toString().toLowerCase();
@@ -67,9 +92,7 @@ app.get("/api/foods", (req, res) => {
 app.post("/api/items", async (req, res) => {
   const { userId = null, foodId, name, quantity = 1, expirationDate } = req.body;
   if (!foodId || !name || !expirationDate) {
-    return res
-      .status(400)
-      .json({ error: "foodId, name og expirationDate er påkrevd" });
+    return res.status(400).json({ error: "foodId, name og expirationDate er påkrevd" });
   }
 
   const conn = await pool.getConnection();
@@ -119,16 +142,18 @@ app.get("/api/items", async (_req, res) => {
   }
 });
 
-// ------------------ Serve frontend ------------------
-const publicPath = path.join(__dirname, "public");
-app.use(express.static(publicPath));
+// Debug (valgfritt): se hvor mange varer i indeksen
+app.get("/api/debug/foods-count", (_req, res) => {
+  ensureIndex();
+  res.json({ count: Array.isArray(INDEX) ? INDEX.length : 0 });
+});
 
+// ---------- Serve frontend ----------
+app.use(express.static(publicPath));
 app.get("/", (_req, res) => {
   res.sendFile(path.join(publicPath, "index.html"));
 });
 
-// ------------------ Start ------------------
+// ---------- Start ----------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () =>
-  console.log(`✅ Matspar (MySQL) kjører på port ${PORT}`)
-);
+app.listen(PORT, () => console.log(`✅ Matspar (MySQL) kjører på port ${PORT}`));
