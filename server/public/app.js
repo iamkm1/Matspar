@@ -1,129 +1,140 @@
-const API_BASE = "http://localhost:8080/api";
+const API = ""; // same-origin (server hoster både frontend og API)
+const $ = (sel) => document.querySelector(sel);
+const $tbody = $("#itemsTable tbody");
 
-const $ = sel => document.querySelector(sel);
-const foodInput = $("#food-input");
-const sugg = $("#suggestions");
-const form = $("#add-form");
-const alertsList = $("#alerts");
+const searchInput = $("#foodSearch");
+const suggestions = $("#suggestions");
+const quantityInput = $("#quantity");
+const dateInput = $("#exp");
+const warning = $("#warning");
+const saveBtn = $("#saveBtn");
 
-function debounce(fn, ms = 250) {
-  let t;
-  return (...args) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...args), ms);
-  };
+let selectedFood = null;
+let debounceTimer;
+
+function renderWarning() {
+  warning.hidden = true;
+  warning.textContent = "";
+  const val = dateInput.value;
+  if (!val) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const exp = new Date(val);
+  const diffDays = Math.ceil((exp - today) / (1000*60*60*24));
+  if (diffDays < 0) {
+    warning.hidden = false;
+    warning.textContent = `⚠️ Varen er utløpt (${Math.abs(diffDays)} dag(er) siden).`;
+  } else if (diffDays <= 3) {
+    warning.hidden = false;
+    warning.textContent = `⏰ Utløper snart (om ${diffDays} dag(er)).`;
+  }
 }
 
-function renderSuggestions(items) {
-  sugg.innerHTML = "";
-  if (!items?.length) {
-    sugg.classList.add("hidden");
-    return;
-  }
+function enableSaveIfReady() {
+  saveBtn.disabled = !(selectedFood && dateInput.value && Number(quantityInput.value) > 0);
+}
 
-  items.forEach(it => {
+async function fetchSuggestions(q) {
+  const res = await fetch(`${API}/api/foods?q=${encodeURIComponent(q)}`);
+  return res.json();
+}
+
+function clearSuggestions() { suggestions.innerHTML = ""; }
+
+function showSuggestions(list) {
+  clearSuggestions();
+  list.forEach((item) => {
     const li = document.createElement("li");
-    li.textContent = it.name;
-    li.addEventListener("click", () => {
-      foodInput.value = it.name;
-      sugg.classList.add("hidden");
-    });
-    sugg.appendChild(li);
+    li.textContent = `${item.name}`;
+    li.addEventListener("click", () => selectFood(item));
+    suggestions.appendChild(li);
   });
-
-  sugg.classList.remove("hidden");
 }
 
-const searchFoods = debounce(async () => {
-  const q = foodInput.value.trim();
-  if (!q) {
-    sugg.classList.add("hidden");
-    return;
-  }
+function selectFood(item) {
+  selectedFood = item;
+  searchInput.value = item.name;
+  clearSuggestions();
+  enableSaveIfReady();
+}
 
-  try {
-    const res = await fetch(`${API_BASE}/foods?q=${encodeURIComponent(q)}`);
-    if (!res.ok) throw new Error("Kunne ikke hente matvarer");
-    const data = await res.json();
-    renderSuggestions(data);
-  } catch (e) {
-    console.error("Feil ved søk:", e.message);
-    sugg.classList.add("hidden");
-  }
-}, 200);
+searchInput.addEventListener("input", () => {
+  selectedFood = null;
+  enableSaveIfReady();
+  const q = searchInput.value.trim();
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(async () => {
+    if (!q) { clearSuggestions(); return; }
+    const list = await fetchSuggestions(q);
+    showSuggestions(list);
+  }, 180);
+});
 
-foodInput.addEventListener("input", searchFoods);
-
-document.addEventListener("click", e => {
-  if (!sugg.contains(e.target) && e.target !== foodInput) {
-    sugg.classList.add("hidden");
+searchInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    const first = suggestions.querySelector("li");
+    if (first) first.click();
   }
 });
 
-form.addEventListener("submit", async e => {
-  e.preventDefault();
+[quantityInput, dateInput].forEach((el) =>
+  el.addEventListener("input", () => {
+    renderWarning();
+    enableSaveIfReady();
+  })
+);
 
-  const email = document.querySelector("#email").value.trim();
-  const productName = foodInput.value.trim();
-  const expirationDate = document.querySelector("#exp").value;
-
-  if (!email || !productName || !expirationDate) {
-    return alert("Fyll ut alle feltene.");
-  }
-
-  try {
-    const res = await fetch(`${API_BASE}/inventory`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, productName, expirationDate })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Ukjent feil" }));
-      return alert("Kunne ikke lagre: " + err.error);
-    }
-
-    alert("Lagret! ✅");
-    form.reset();
-    sugg.classList.add("hidden");
-  } catch (e) {
-    console.error("Feil ved lagring:", e.message);
-    alert("Noe gikk galt, prøv igjen.");
-  }
-});
-
-document.querySelector("#check-alerts").addEventListener("click", async () => {
-  const email = document.querySelector("#email").value.trim();
-  const days = document.querySelector("#days").value || 3;
-
-  if (!email) {
-    return alert("Skriv inn e-post først.");
-  }
-
-  try {
-    const res = await fetch(
-      `${API_BASE}/alerts?email=${encodeURIComponent(email)}&days=${days}`
-    );
-    if (!res.ok) throw new Error("Kunne ikke hente varsler");
-
-    const data = await res.json();
-    alertsList.innerHTML = "";
-
-    if (!data.length) {
-      alertsList.innerHTML = "<li>Ingen varsler 🎉</li>";
-      return;
-    }
-
-    data.forEach(({ name, expiration_date, status }) => {
-      const li = document.createElement("li");
-      const badge = `<span class="badge ${status}">${
-        status === "expired" ? "Utløpt" : "Snart utløpt"
-      }</span>`;
-      li.innerHTML = `${name} – ${new Date(expiration_date).toLocaleDateString()} ${badge}`;
-      alertsList.appendChild(li);
-    });
-  } catch (e) {
-    console.error("Feil ved varsler:", e.message);
-    alertsList.innerHTML = "<li>Kunne ikke hente varsler</li>";
+saveBtn.addEventListener("click", async () => {
+  const payload = {
+    userId: null,
+    foodId: selectedFood.foodId,
+    name: selectedFood.name,
+    quantity: Number(quantityInput.value) || 1,
+    expirationDate: dateInput.value
+  };
+  const res = await fetch(`${API}/api/items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (data.ok) {
+    await refreshItems();
+    searchInput.value = "";
+    selectedFood = null;
+    quantityInput.value = 1;
+    dateInput.value = "";
+    renderWarning();
+    enableSaveIfReady();
+  } else {
+    alert("Kunne ikke lagre (se konsoll).");
+    console.error(data);
   }
 });
+
+function statusFor(expStr) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const exp = new Date(expStr);
+  const diffDays = Math.ceil((exp - today) / (1000*60*60*24));
+  if (diffDays < 0) return { label: `Utløpt for ${Math.abs(diffDays)} d siden`, cls: "status-expired" };
+  if (diffDays <= 3) return { label: `Utløper om ${diffDays} d`, cls: "status-soon" };
+  return { label: "OK", cls: "status-ok" };
+}
+
+async function refreshItems() {
+  const res = await fetch(`${API}/api/items`);
+  const rows = await res.json();
+  $tbody.innerHTML = "";
+  rows.forEach((r) => {
+    const tr = document.createElement("tr");
+    const s = statusFor(r.expiration_date);
+    tr.innerHTML = `
+      <td>${r.name}</td>
+      <td>${r.quantity}</td>
+      <td>${r.expiration_date}</td>
+      <td class="${s.cls}">${s.label}</td>
+    `;
+    $tbody.appendChild(tr);
+  });
+}
+
+refreshItems();
