@@ -1,4 +1,4 @@
-const API = ""; // same-origin
+const API = ""; // same-origin (server hoster API + frontend)
 const $ = (sel) => document.querySelector(sel);
 const $tbody = $("#itemsTable tbody");
 
@@ -11,27 +11,18 @@ const saveBtn = $("#saveBtn");
 
 let selectedFood = null;
 let debounceTimer;
+let latestQuery = "";
 
-// --- HJELPER: lag lokal dato fra 'YYYY-MM-DD' uten tidsone-problemer ---
+// ---------- Hjelpere for dato ----------
 function parseLocalDate(ymd) {
   if (!ymd) return null;
-  // Forventer "YYYY-MM-DD"
   const [y, m, d] = ymd.split("-").map(Number);
-  return new Date(y, (m || 1) - 1, d || 1); // Lokal tid, midnatt
+  return new Date(y, (m || 1) - 1, d || 1); // Lokal midnatt
 }
+function todayLocal() { const t = new Date(); t.setHours(0,0,0,0); return t; }
+function daysDiff(a, b) { return Math.ceil((a.getTime() - b.getTime()) / (1000*60*60*24)); }
 
-// --- HJELPER: dagens dato (lokal) satt til 00:00 ---
-function todayLocal() {
-  const t = new Date();
-  t.setHours(0, 0, 0, 0);
-  return t;
-}
-
-function daysDiff(a, b) {
-  const ms = a.getTime() - b.getTime();
-  return Math.ceil(ms / (1000 * 60 * 60 * 24));
-}
-
+// ---------- Varsel ved valg av dato ----------
 function renderWarning() {
   warning.hidden = true;
   warning.textContent = "";
@@ -39,15 +30,14 @@ function renderWarning() {
   if (!val) return;
 
   const exp = parseLocalDate(val);
-  const today = todayLocal();
-  const diffDays = daysDiff(exp, today);
+  const diffDays = daysDiff(exp, todayLocal());
 
   if (diffDays < 0) {
     warning.hidden = false;
-    warning.textContent = `⚠️ Varen er utløpt (${Math.abs(diffDays)} dag(er) siden).`;
+    warning.textContent = `⚠️ Utløpt (${Math.abs(diffDays)} dag(er) siden).`;
   } else if (diffDays <= 3) {
     warning.hidden = false;
-    warning.textContent = `⏰ Utløper snart (om ${diffDays} dag(er)).`;
+    warning.textContent = `⏰ Snart utløpt (om ${diffDays} dag(er)).`;
   }
 }
 
@@ -55,23 +45,24 @@ function enableSaveIfReady() {
   saveBtn.disabled = !(selectedFood && dateInput.value && Number(quantityInput.value) > 0);
 }
 
+// ---------- Autoforslag ----------
 async function fetchSuggestions(q) {
+  latestQuery = q;
   const res = await fetch(`${API}/api/foods?q=${encodeURIComponent(q)}`);
-  return res.json();
+  const data = await res.json();
+  if (latestQuery !== q) return []; // ignorer utdaterte svar
+  return data;
 }
-
 function clearSuggestions() { suggestions.innerHTML = ""; }
-
 function showSuggestions(list) {
   clearSuggestions();
   list.forEach((item) => {
     const li = document.createElement("li");
-    li.textContent = `${item.name}`;
+    li.textContent = item.name;
     li.addEventListener("click", () => selectFood(item));
     suggestions.appendChild(li);
   });
 }
-
 function selectFood(item) {
   selectedFood = item;
   searchInput.value = item.name;
@@ -99,23 +90,19 @@ searchInput.addEventListener("keydown", (e) => {
 });
 
 [quantityInput, dateInput].forEach((el) =>
-  el.addEventListener("input", () => {
-    renderWarning();
-    enableSaveIfReady();
-  })
+  el.addEventListener("input", () => { renderWarning(); enableSaveIfReady(); })
 );
 
-// --- KORREKT statuslogikk (lokal dato): Utløpt / Snart utløpt (<=3) / OK ---
+// ---------- Status-beregning ----------
 function statusFor(expStr) {
   const exp = parseLocalDate(expStr);
-  const today = todayLocal();
-  const diffDays = daysDiff(exp, today);
-
+  const diffDays = daysDiff(exp, todayLocal());
   if (diffDays < 0) return { label: "Utløpt", cls: "status-expired" };
-  if (diffDays <= 3) return { label: `Snart utløpt`, cls: "status-soon" };
+  if (diffDays <= 3) return { label: "Snart utløpt", cls: "status-soon" };
   return { label: "OK", cls: "status-ok" };
 }
 
+// ---------- Hent og tegn rader ----------
 async function refreshItems() {
   const res = await fetch(`${API}/api/items`);
   const rows = await res.json();
@@ -129,21 +116,52 @@ async function refreshItems() {
       <td>${r.expiration_date}</td>
       <td class="${s.cls}">${s.label}</td>
       <td><button data-id="${r.id}" class="deleteBtn">Slett</button></td>
+      <td><button data-id="${r.id}" class="editBtn">Endre</button></td>
     `;
     $tbody.appendChild(tr);
   });
 
+  // Slett
   document.querySelectorAll(".deleteBtn").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       const id = e.target.getAttribute("data-id");
-      if (confirm("Er du sikker på at du vil slette denne varen?")) {
+      if (confirm("Slette denne varen?")) {
         await fetch(`${API}/api/items/${id}`, { method: "DELETE" });
         await refreshItems();
       }
     });
   });
+
+  // Endre (antall/utløpsdato via enkle prompts)
+  document.querySelectorAll(".editBtn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      const id = e.target.getAttribute("data-id");
+
+      const newQuantityRaw = prompt("Nytt antall (tom = uendret):");
+      const newDateRaw = prompt("Ny utløpsdato (YYYY-MM-DD) (tom = uendret):");
+
+      const payload = {};
+      if (newQuantityRaw && !Number.isNaN(Number(newQuantityRaw))) {
+        payload.quantity = Number(newQuantityRaw);
+      }
+      if (newDateRaw && /^\d{4}-\d{2}-\d{2}$/.test(newDateRaw)) {
+        payload.expirationDate = newDateRaw;
+      }
+
+      if (Object.keys(payload).length === 0) return;
+
+      await fetch(`${API}/api/items/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      await refreshItems();
+    });
+  });
 }
 
+// ---------- Lagre ny vare ----------
 saveBtn.addEventListener("click", async () => {
   const payload = {
     userId: null,
@@ -172,4 +190,5 @@ saveBtn.addEventListener("click", async () => {
   }
 });
 
+// Init
 refreshItems();
