@@ -7,9 +7,33 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="container">
-    <h1>Matspar</h1>
+  <header class="topbar">
+    <div class="brand">Matspar</div>
 
+    <div class="right-actions">
+      <!-- Notification bell -->
+      <button id="notifBell" class="notif-bell" aria-label="Varsler" aria-haspopup="true" aria-expanded="false">
+        <!-- Bell icon (SVG) -->
+        <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2a6 6 0 0 0-6 6v3.586l-.707.707A1 1 0 0 0 6 14h12a1 1 0 0 0 .707-1.707L18 11.586V8a6 6 0 0 0-6-6zm0 20a3 3 0 0 0 3-3H9a3 3 0 0 0 3 3z"/>
+        </svg>
+        <span id="notifBadge" class="badge" hidden>0</span>
+      </button>
+
+      <!-- Dropdown panel -->
+      <div id="notifPanel" class="notif-panel" role="dialog" aria-label="Varsler" hidden>
+        <div class="notif-header">
+          <strong>Varsler</strong>
+          <button id="notifClose" class="ghost-btn" aria-label="Lukk">Lukk</button>
+        </div>
+        <div id="notifContent" class="notif-content">
+          <!-- Fylles fra app.js -->
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
     <section class="card">
       <label for="foodSearch">Søk etter matvare</label>
       <input id="foodSearch" type="text" placeholder="Skriv f.eks. agurk…" autocomplete="off" />
