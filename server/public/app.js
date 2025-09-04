@@ -83,6 +83,46 @@ searchInput.addEventListener("keydown", (e) => {
   })
 );
 
+// --- Status: SNUDD logikk som du ba om ---
+function statusFor(expStr) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const exp = new Date(expStr);
+  const diffDays = Math.ceil((exp - today) / (1000*60*60*24));
+
+  // Snu: ting som var OK før blir "Utløpt", og det som var utløpt/snart utløpt blir "OK"
+  if (diffDays < 0) return { label: "OK", cls: "status-ok" };
+  if (diffDays <= 3) return { label: "OK", cls: "status-ok" };
+  return { label: "Utløpt", cls: "status-expired" };
+}
+
+async function refreshItems() {
+  const res = await fetch(`${API}/api/items`);
+  const rows = await res.json();
+  $tbody.innerHTML = "";
+  rows.forEach((r) => {
+    const tr = document.createElement("tr");
+    const s = statusFor(r.expiration_date);
+    tr.innerHTML = `
+      <td>${r.name}</td>
+      <td>${r.quantity}</td>
+      <td>${r.expiration_date}</td>
+      <td class="${s.cls}">${s.label}</td>
+      <td><button data-id="${r.id}" class="deleteBtn">Slett</button></td>
+    `;
+    $tbody.appendChild(tr);
+  });
+
+  document.querySelectorAll(".deleteBtn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      const id = e.target.getAttribute("data-id");
+      if (confirm("Er du sikker på at du vil slette denne varen?")) {
+        await fetch(`${API}/api/items/${id}`, { method: "DELETE" });
+        await refreshItems();
+      }
+    });
+  });
+}
+
 saveBtn.addEventListener("click", async () => {
   const payload = {
     userId: null,
@@ -110,31 +150,5 @@ saveBtn.addEventListener("click", async () => {
     console.error(data);
   }
 });
-
-function statusFor(expStr) {
-  const today = new Date(); today.setHours(0,0,0,0);
-  const exp = new Date(expStr);
-  const diffDays = Math.ceil((exp - today) / (1000*60*60*24));
-  if (diffDays < 0) return { label: `Utløpt for ${Math.abs(diffDays)} d siden`, cls: "status-expired" };
-  if (diffDays <= 3) return { label: `Utløper om ${diffDays} d`, cls: "status-soon" };
-  return { label: "OK", cls: "status-ok" };
-}
-
-async function refreshItems() {
-  const res = await fetch(`${API}/api/items`);
-  const rows = await res.json();
-  $tbody.innerHTML = "";
-  rows.forEach((r) => {
-    const tr = document.createElement("tr");
-    const s = statusFor(r.expiration_date);
-    tr.innerHTML = `
-      <td>${r.name}</td>
-      <td>${r.quantity}</td>
-      <td>${r.expiration_date}</td>
-      <td class="${s.cls}">${s.label}</td>
-    `;
-    $tbody.appendChild(tr);
-  });
-}
 
 refreshItems();
