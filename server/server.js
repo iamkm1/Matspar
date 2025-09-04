@@ -89,23 +89,6 @@ app.get("/api/foods", (req, res) => {
   res.json(results);
 });
 
-app.delete("/api/items/:id", async (req, res) => {
-  const { id } = req.params;
-  const conn = await pool.getConnection();
-  try {
-    const [result] = await conn.execute(
-      `DELETE FROM inventory_items WHERE id = ?`,
-      [id]
-    );
-    res.json({ ok: true, deleted: result.affectedRows });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "DB-feil ved sletting" });
-  } finally {
-    conn.release();
-  }
-});
-
 app.post("/api/items", async (req, res) => {
   const { userId = null, foodId, name, quantity = 1, expirationDate } = req.body;
   if (!foodId || !name || !expirationDate) {
@@ -159,7 +142,25 @@ app.get("/api/items", async (_req, res) => {
   }
 });
 
-// Debug (valgfritt): se hvor mange varer i indeksen
+// Slett vare
+app.delete("/api/items/:id", async (req, res) => {
+  const { id } = req.params;
+  const conn = await pool.getConnection();
+  try {
+    const [result] = await conn.execute(
+      `DELETE FROM inventory_items WHERE id = ?`,
+      [id]
+    );
+    res.json({ ok: true, deleted: result.affectedRows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "DB-feil ved sletting" });
+  } finally {
+    conn.release();
+  }
+});
+
+// Debug (valgfritt)
 app.get("/api/debug/foods-count", (_req, res) => {
   ensureIndex();
   res.json({ count: Array.isArray(INDEX) ? INDEX.length : 0 });
@@ -174,4 +175,3 @@ app.get("/", (_req, res) => {
 // ---------- Start ----------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Matspar (MySQL) kjører på port ${PORT}`));
-
